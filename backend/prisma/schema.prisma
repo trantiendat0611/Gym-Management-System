@@ -1,0 +1,185 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+// Looking for ways to speed up your queries, or scale easily with your serverless or edge functions?
+// Try Prisma Accelerate: https://pris.ly/cli/accelerate-init
+
+generator client {
+  provider = "prisma-client-js"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "mongodb"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id           String         @id @default(auto()) @map("_id") @db.ObjectId
+  name         String
+  email        String         @unique
+  password     String
+  role         String         @default("member")
+  phone        String?
+  address      String?
+  dateOfBirth  DateTime?
+  profileImage String?        @default("default.jpg")
+  active       Boolean        @default(true)
+  createdAt    DateTime       @default(now())
+  updatedAt    DateTime       @updatedAt
+  
+  // Relations
+  subscriptions Subscription[] @relation("MemberSubscriptions")
+  attendances   Attendance[]   @relation("MemberAttendances")
+  createdSubscriptions Subscription[] @relation("SubscriptionCreatedBy")
+  createdAttendances   Attendance[]   @relation("AttendanceCreatedBy")
+  createdEquipment     Equipment[]    @relation("EquipmentCreatedBy")
+  createdMaintenanceLogs MaintenanceLog[] @relation("MaintenanceLogCreatedBy")
+  
+  // Cancellation relations
+  cancellationRequests SubscriptionCancellationRequest[] @relation("MemberCancellationRequests")
+  processedCancellationRequests SubscriptionCancellationRequest[] @relation("ProcessedCancellationRequests")
+  
+  // Appointment relations
+  memberAppointments Appointment[] @relation("MemberAppointments")
+  trainerAppointments Appointment[] @relation("TrainerAppointments")
+}
+
+model Membership {
+  id          String         @id @default(auto()) @map("_id") @db.ObjectId
+  name        String         @unique
+  description String
+  duration    Int            // Number of months
+  price       Float
+  features    String[]
+  active      Boolean        @default(true)
+  createdAt   DateTime       @default(now())
+  updatedAt   DateTime       @updatedAt
+  
+  // Relations
+  subscriptions Subscription[] @relation("MembershipSubscriptions")
+}
+
+model Subscription {
+  id             String     @id @default(auto()) @map("_id") @db.ObjectId
+  memberId       String     @db.ObjectId
+  membershipId   String     @db.ObjectId
+  startDate      DateTime   @default(now())
+  endDate        DateTime
+  paymentStatus  String     @default("pending")
+  paymentAmount  Float
+  paymentDate    DateTime?
+  paymentMethod  String     @default("cash")
+  active         Boolean    @default(true)
+  notes          String?
+  createdById    String?    @db.ObjectId
+  createdAt      DateTime   @default(now())
+  updatedAt      DateTime   @updatedAt
+  
+  // Relations
+  member         User       @relation("MemberSubscriptions", fields: [memberId], references: [id])
+  membership     Membership @relation("MembershipSubscriptions", fields: [membershipId], references: [id])
+  createdBy      User?      @relation("SubscriptionCreatedBy", fields: [createdById], references: [id])
+  
+  // Cancellation relation
+  cancellationRequests SubscriptionCancellationRequest[] @relation("SubscriptionCancellationRequests")
+}
+
+model Attendance {
+  id           String    @id @default(auto()) @map("_id") @db.ObjectId
+  memberId     String    @db.ObjectId
+  checkInTime  DateTime  @default(now())
+  checkOutTime DateTime?
+  duration     Int?      // Duration in minutes
+  notes        String?
+  createdById  String?   @db.ObjectId
+  createdAt    DateTime  @default(now())
+  
+  // Relations
+  member       User      @relation("MemberAttendances", fields: [memberId], references: [id])
+  createdBy    User?     @relation("AttendanceCreatedBy", fields: [createdById], references: [id])
+}
+
+model Equipment {
+  id            String          @id @default(auto()) @map("_id") @db.ObjectId
+  name          String
+  description   String
+  category      String          // e.g., "Cardio", "Strength", "Flexibility"
+  purchaseDate  DateTime
+  purchasePrice Float
+  manufacturer  String
+  model         String?
+  serialNumber  String?
+  status        String          @default("available") // available, in-use, maintenance, retired
+  location      String?         // e.g., "Main floor", "Weight room", etc.
+  lastMaintenance DateTime?
+  nextMaintenance DateTime?
+  imageBase64   String?         // Base64 encoded image data
+  notes         String?
+  createdById   String?         @db.ObjectId
+  createdAt     DateTime        @default(now())
+  updatedAt     DateTime        @updatedAt
+  
+  // Relations
+  maintenanceLogs MaintenanceLog[] @relation("EquipmentMaintenance")
+  createdBy       User?            @relation("EquipmentCreatedBy", fields: [createdById], references: [id])
+}
+
+model MaintenanceLog {
+  id            String    @id @default(auto()) @map("_id") @db.ObjectId
+  equipmentId   String    @db.ObjectId
+  maintenanceDate DateTime @default(now())
+  maintenanceType String   // e.g., "Routine", "Repair", "Inspection"
+  description   String
+  cost          Float?
+  technician    String?
+  parts         String?
+  status        String    @default("completed") // scheduled, in-progress, completed, cancelled
+  createdById   String?   @db.ObjectId
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+  
+  // Relations
+  equipment     Equipment @relation("EquipmentMaintenance", fields: [equipmentId], references: [id])
+  createdBy     User?     @relation("MaintenanceLogCreatedBy", fields: [createdById], references: [id])
+}
+
+// Model for subscription cancellation requests
+model SubscriptionCancellationRequest {
+  id            String     @id @default(auto()) @map("_id") @db.ObjectId
+  subscriptionId String     @db.ObjectId
+  memberId      String     @db.ObjectId
+  requestDate   DateTime   @default(now())
+  status        String     @default("pending") // pending, approved, rejected
+  reason        String?
+  adminNote     String?
+  refundAmount  Float?
+  processedById String?    @db.ObjectId
+  processedDate DateTime?
+  createdAt     DateTime   @default(now())
+  updatedAt     DateTime   @updatedAt
+  
+  // Relations  
+  subscription  Subscription @relation("SubscriptionCancellationRequests", fields: [subscriptionId], references: [id])
+  member        User         @relation("MemberCancellationRequests", fields: [memberId], references: [id])
+  processedBy   User?        @relation("ProcessedCancellationRequests", fields: [processedById], references: [id])
+}
+
+// Model for trainer appointments
+model Appointment {
+  id           String    @id @default(auto()) @map("_id") @db.ObjectId
+  memberId     String    @db.ObjectId
+  trainerId    String    @db.ObjectId
+  title        String
+  description  String?
+  appointmentDate DateTime
+  duration     Int       // Duration in minutes
+  status       String    @default("pending") // pending, accepted, rejected, completed, cancelled
+  notes        String?
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+  
+  // Relations
+  member       User      @relation("MemberAppointments", fields: [memberId], references: [id])
+  trainer      User      @relation("TrainerAppointments", fields: [trainerId], references: [id])
+}
